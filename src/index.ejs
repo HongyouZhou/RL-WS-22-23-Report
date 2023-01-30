@@ -9,6 +9,25 @@
   <script src="https://distill.pub/template.v2.js"></script>
 </head>
 
+<style>
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 0 4px;
+  }
+
+  /* Create two equal columns that sits next to each other */
+  .column {
+    flex: 50%;
+    padding: 0 4px;
+  }
+
+  .column img {
+    margin-top: 8px;
+    vertical-align: middle;
+  }
+</style>
+
 <body>
 
   <d-front-matter>
@@ -18,18 +37,204 @@
   </d-front-matter>
 
   <d-title>
-    <h1>Distill Example</h1>
-    <p>An example project using Webpack, Babel, and Svelte. </p>
+    <h1>RL-22-23-Report</h1>
+    <p>SAFE REINFORCEMENT LEARNING WITH NATURAL LANGUAGE CONSTRAINTS</p>
   </d-title>
 
   <d-article>
 
+    <h4>Abstract</h4>
     <p>
-      Welcome to a Distill example article: meant to get you writing up your research quickly. Let's demo some
-      features:
+      The paper I need to reproduce this semester addresses the problem of learning task control policies under the constraints of providing a natural language. 
+      Unlike instruction following, the language here is not used to specify goals, but rather to describe situations that agents must avoid when exploring the environment. 
+      Specifying constraints in natural language also differs from the predominant paradigm in safety reinforcement learning, 
+      where safety criteria are enforced by a manually defined cost function. 
+      While natural language allows for simple and flexible specification of safety constraints and budget limits, 
+      its ambiguity poses a challenge in mapping these specifications to representations that can be used by safety reinforcement learning techniques. 
+      To address this problem, its authors developed a model with two parts. 
+      (1) a constraint interpreter that encodes natural language constraints into vector representations that capture spatial and temporal information about forbidden states, 
+      and (2) a policy network that uses these representations to output a policy with minimal constraint violations. 
+      Our model is end-to-end differentiable, and we train it using a recently proposed constrained policy optimization algorithm.
     </p>
 
-    <h4>Hot reloading</h4>
+
+    <h4>Constraint Interpreter</h4>
+    The focus of this article is on how to convert textual descriptions of constraints into values that can be directly understood by reinforcement learning. 
+    The following model is used in the paper.
+    <figure>
+      <%= require("../static/diagrams/constraint-interpreter.drawio.svg") %>
+    </figure>
+    <p>
+      (1)The constraint mask module uses the observation <d-math>o_t</d-math> and the text <d-math>x</d-math> to predict a binary constraint mask, 
+      denoted by <d-math>\hat{M}_C</d-math>, that is a prediction of the true constraint mask <d-math>M_C</d-math>. 
+      If there is a cost entity 
+      (i.e., the forbidden state mentioned in the text) in row <d-math>i</d-math> and column <d-math>j</d-math> (denoted by <d-math>o_{t(i, j)}</d-math>) of observation <d-math>o_y</d-math>, 
+      each cell in <d-math>\hat{M}_C</d-math> will contain a one. Otherwise, the cell contains a zero. 
+      The authors use <d-math>\hat{M}_C</d-math> to identify the cost entities in the text while preserving their spatial information for the policy network. 
+      (2) The constraint threshold module uses an LSTM to obtain a text vector representation, followed by a dense layer to generate h. The dense layer generates <d-math>\hat{h}_C</d-math>, 
+      which predicts the true constraint threshold <d-math>h_C</d-math>.
+    </p>
+
+    <h4>Policy Network</h4>
+    <figure>
+      <%= require("../static/diagrams/policy-network.drawio.svg") %>
+    </figure>
+    <h4>Training Procedure for Constraint Interpreter</h4>
+    <p>
+      The constraint translator is composed of two parts as described in previous sections, 
+      firstly the constraint mask module, and the constraint threshold module. 
+      The LSTM is used in the thesis as its semantic analysis module, 
+      and due to the excellent performance of the Transformer in language modeling, 
+      I decided to use this model as an alternative to it in my experiments.
+    </p>
+    <p>
+      The constraint descriptions I use are mainly from the method written by the authors of the paper. 
+      The method uses existing phrases to generate random constraint descriptions based on the target constraints. 
+      Observations are then collected in the provided environment using a random policy. Finally, 
+      based on the collected observations and the constraints corresponding to the observations, 
+      a constraint mask can be generated as the ground truth for training. 
+      The constraint thresholds are already known at the time of generating the constraint descriptions, 
+      so no additional processing is required.
+    </p>
+
+
+    <figure>
+      <%= require("../static/diagrams/constraint_mask_interpreter.drawio.svg") %>
+      <figcaption>The modified constraint mask interpreter</figcaption>
+    </figure>
+
+    <figure style="width: 50%;">
+      <%= require("../static/diagrams/constraint_threshold_interpreter.drawio.svg") %>
+      <figcaption>The modified constraint threshold interpreter</figcaption>
+    </figure>
+
+
+    <p>
+      First I tried to train the model from scratch using the basic Transformer model. 
+      In more detail, I'm using just the encoder part of the Transformer, which is the left part of the following part.
+      The tokenrizer of the model is just a simple numbering of words in the word bank for the vocabulary. 
+      The final accuracy of the model is about 91%.
+    </p>
+
+
+
+    <figure>
+      <%= require("../static/images/transformer.drawio.svg") %>
+    </figure>
+
+    <p>
+      To better verify the feasibility of the approach, I used a pre-trained natural language processing model, 
+      BERT, in my final experiments to analyze the constraints of textual descriptions. 
+      It is noteworthy that the mainstream natural language analysis models nowadays no longer use LSTM, 
+      but are replaced by Transformer, and BERT is one of them. 
+      Since the base model of BERT also uses the Transformer, 
+      I think it can be used as an extension experiment of the previous step.
+      In addition, since our data will not be optimized for the language model, the BERT model needs to be frozen during training.
+    </p>
+
+    <p>
+      The final number of parameters of the model is as follows.
+    </p>
+
+    <table id="constraint_interpreter_params_numbers">
+      <thead>
+        <tr>
+          <th scope="col">Layer (type)</th>
+          <th scope="col">Output Shape</th>
+          <th scope="col">Param #</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td scope="row">tf_bert_model (TFBertModel)</td>
+          <td>multiple</td>
+          <td>108310272</td>
+        </tr>
+        <tr>
+          <td>dense (Dense)</td>
+          <td>multiple</td>
+          <td>769</td>
+        </tr>
+        <tr>
+          <td>conv2d (Conv2D)</td>
+          <td>multiple</td>
+          <td>9280</td>
+        </tr>
+        <tr>
+          <td>sequential (Sequential)</td>
+          <td>(50, 49)</td>
+          <td>19249</td>
+        </tr>
+        <tr>
+          <td colspan="3">Total params: 108,339,570</td>
+        </tr>
+        <tr>
+          <td colspan="3">Trainable params: 29,298</td>
+        </tr>
+        <tr>
+          <td colspan="3">Non-trainable params: 108,310,272</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      In addition, during the training Constraint Interpreter phase, 
+      the data are generated by the agents in a random environment using random policies.
+      The constrained text descriptions are generated from a fixed library of words by permutation.
+    </p>
+
+    <h4>Training Procedure for Policy Network</h4>
+    <p>
+      Since the policy module described in the paper does not differ from the Constrained Policy Optimization <d-cite key="achiam2017constrained"></d-cite>, 
+      here I use the code base provided by OpenAI
+      <d-footnote id="d-footnote-1">
+        https://github.com/openai/safety-starter-agents
+      </d-footnote> 
+      as a template to use.
+      In addition, the environment used for the experiments is Safety Gym
+      <d-footnote id="d-footnote-2">
+        https://openai.com/blog/safety-gym/
+      </d-footnote>, 
+      which has been customized by the authors of the paper, 
+      and the code has been made available on Github
+      <d-footnote id="d-footnote-3">
+        https://github.com/michahu/hazard-world-grid
+      </d-footnote>.
+    </p>
+    <p>
+      The general process of training remains the same as in the template, 
+      the part that is different is the middle layer of the policy module. 
+      To better fit the data of this paper, 
+      I replaced the multilayer perceptron in the template with a convolutional network, 
+      thus being able to save memory usage to a great extent.
+    </p>
+
+    <h4>Result</h4>
+    <ul>
+      <li>Constraint Interpreter</li>
+        <p>
+          Using the constraints generated by permutation using a fixed word bank together with the observed data, 
+          a constrained interpreter with an accuracy of about 91% can be finally trained.However, 
+          accuracy is not the part I want to emphasize. 
+          In my experiments, I use the pre-trained model provided by the huggingface library <d-cite key="Wolf_Transformers_State-of-the-Art_Natural_2020"></d-cite> to transcribe the constraint text. 
+          The transcribed constraint text was then used for testing.
+          The final accuracy was also about 91% as the original test accuracy. 
+          This shows that the network after Transformer did learn how to use the embedded text and the observed data to derive the constraint masks.
+        </p>
+      <li>Policy Network</li>
+        <p>
+          As described in the previous sections, I use the CPO from the existing code to train the policy network. 
+          However, some parameters in it were adjusted. 
+          First, it is important to note that the training method provided inside this code base uses an online approach, 
+          so the data for each epoch needs to be generated online. 
+          To ensure the availability of the data and to ensure that there are enough trajectories per epoch, 
+          I set the maximum length of each trajectory to 1e3 and the maximum length of each epoch to 1e5. A total of 1e3 epochs are trained.
+
+        </p>
+    </ul>
+    
+
+    <!-- <h4>Hot reloading</h4>
     <p>Your browser can automatically refresh when your editor saves. This should work by default, and you can disable
       it in <code>index.js</code>. Sometimes hot reloading isn't fully compatible with all types of code, so you may
       need to try manually reloading if you're seeing inconsistent behavior.</p>
@@ -179,9 +384,9 @@
         <d-math>x</d-math> by itself.
       </figcaption>
 
-    </figure>
+    </figure> -->
 
-    <h4>Citations</h4>
+    <!-- <h4>Citations</h4>
 
     <p>We can<d-cite key="mercier2011humans,yang2021safe"></d-cite> also cite <d-cite
         key="gregor2015draw,mercier2011humans,openai2018charter"></d-cite> external publications. <d-cite
@@ -303,7 +508,7 @@
     <p>That's it for the example article! Feel free to look at <a
         href="https://github.com/distillpub?utf8=%E2%9C%93&q=post--&type=public">implementations
         of existing Distill articles</a>, or ask for help in
-      the <a href="http://slack.distill.pub">Distill Slack Community</a>.</p>
+      the <a href="http://slack.distill.pub">Distill Slack Community</a>.</p> -->
 
   </d-article>
 
@@ -312,22 +517,8 @@
   <d-appendix>
     <h3>Acknowledgments</h3>
     <p>
-      We are deeply grateful to...
+      Many thanks to Michael Hu for his advice.
     </p>
-
-    <p>
-      Many of our diagrams are based on...
-    </p>
-
-    <h3>Author Contributions</h3>
-    <p>
-      <b>Research:</b> Alex developed ...
-    </p>
-
-    <p>
-      <b>Writing & Diagrams:</b> The text was initially drafted by...
-    </p>
-
 
     <d-footnote-list></d-footnote-list>
     <d-citation-list></d-citation-list>
